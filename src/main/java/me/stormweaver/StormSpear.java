@@ -34,19 +34,20 @@ public class StormSpear extends JavaPlugin implements Listener {
     }
 
     private void registerRecipe() {
-        // This creates the recipe: Bolt Trims in corners, Conduit top, Tridents sides, Spear middle, Rod bottom
         ShapedRecipe r = new ShapedRecipe(new NamespacedKey(this, "storm_recipe"), getSpear());
         r.shape("BCB", "TNT", "BLB");
         r.setIngredient('B', Material.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE);
         r.setIngredient('C', Material.CONDUIT);
         r.setIngredient('T', Material.TRIDENT);
-        r.setIngredient('N', Material.NETHERITE_SPEAR);
+        // Using valueOf to bypass the "Cannot find symbol" error
+        r.setIngredient('N', Material.valueOf("NETHERITE_SPEAR"));
         r.setIngredient('L', Material.LIGHTNING_ROD);
         Bukkit.addRecipe(r);
     }
 
     public ItemStack getSpear() {
-        ItemStack s = new ItemStack(Material.NETHERITE_SPEAR);
+        // Using valueOf here as well
+        ItemStack s = new ItemStack(Material.valueOf("NETHERITE_SPEAR"));
         ItemMeta m = s.getItemMeta();
         if (m != null) {
             m.setDisplayName(ChatColor.GOLD + "" + ChatColor.BOLD + "The Fulgurite Obelisk");
@@ -65,8 +66,8 @@ public class StormSpear extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onCraft(CraftItemEvent e) {
-        ItemStack result = e.getRecipe().getResult();
-        if (result.hasItemMeta() && result.getItemMeta().getDisplayName().contains("Obelisk")) {
+        if (e.getRecipe().getResult().getItemMeta() == null) return;
+        if (e.getRecipe().getResult().getItemMeta().getDisplayName().contains("Obelisk")) {
             Player p = (Player) e.getWhoClicked();
             if (p.getPersistentDataContainer().has(craftLimitKey, PersistentDataType.BYTE)) {
                 p.sendMessage(ChatColor.RED + "The secret of the forge has left your mind. You can only craft this once.");
@@ -83,7 +84,9 @@ public class StormSpear extends JavaPlugin implements Listener {
         if (e.getAction() != Action.LEFT_CLICK_AIR && e.getAction() != Action.LEFT_CLICK_BLOCK) return;
         
         ItemStack item = e.getItem();
-        if (item == null || !item.hasItemMeta()) return;
+        // Check if it's the spear using a string check to be safe
+        if (item == null || !item.getType().name().equals("NETHERITE_SPEAR") || !item.hasItemMeta()) return;
+        
         ItemMeta m = item.getItemMeta();
         if (!m.getPersistentDataContainer().has(chargeKey, PersistentDataType.INTEGER)) return;
 
@@ -115,8 +118,10 @@ public class StormSpear extends JavaPlugin implements Listener {
         charges--;
         m.getPersistentDataContainer().set(chargeKey, PersistentDataType.INTEGER, charges);
         List<String> lore = m.getLore();
-        lore.set(2, ChatColor.WHITE + "Charges: " + ChatColor.YELLOW + charges + " / 3");
-        m.setLore(lore);
+        if (lore != null && lore.size() > 2) {
+            lore.set(2, ChatColor.WHITE + "Charges: " + ChatColor.YELLOW + charges + " / 3");
+            m.setLore(lore);
+        }
         item.setItemMeta(m);
 
         if (charges == 0) cdMap.put(p.getUniqueId(), System.currentTimeMillis());
