@@ -56,7 +56,9 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
         recipe.setIngredient('T', Material.TRIDENT);
         recipe.setIngredient('I', Material.NETHERITE_INGOT);
         recipe.setIngredient('L', Material.LIGHTNING_ROD);
-        Bukkit.addRecipe(recipeKey.getNamespace(), recipe);
+        
+        // FIXED: Removed the extra string that caused the compilation error
+        Bukkit.addRecipe(recipe);
     }
 
     public ItemStack getSpear() {
@@ -71,6 +73,7 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
             l.add(ChatColor.DARK_PURPLE + "Relic of the Primal Gale");
             l.add("");
             l.add(ChatColor.WHITE + "Charges: " + ChatColor.YELLOW + "3 / 3");
+            l.add(ChatColor.GRAY + "3 hits, then 60s recharge.");
             m.setLore(l);
             m.getPersistentDataContainer().set(chargeKey, PersistentDataType.INTEGER, 3);
             s.setItemMeta(m);
@@ -90,7 +93,7 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
 
         int charges = m.getPersistentDataContainer().getOrDefault(chargeKey, PersistentDataType.INTEGER, 0);
 
-        // 1. Check recharge timer if charges are 0
+        // 1. Recharge Timer Check
         if (charges <= 0) {
             if (rechargeTimer.containsKey(player.getUniqueId())) {
                 long lastUsed = rechargeTimer.get(player.getUniqueId());
@@ -99,7 +102,7 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
                     player.sendMessage(ChatColor.RED + "Recharging... (" + (60 - secondsPassed) + "s)");
                     return;
                 } else {
-                    charges = 3;
+                    charges = 3; // Time is up, reset
                     rechargeTimer.remove(player.getUniqueId());
                 }
             } else {
@@ -111,15 +114,14 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
         if (charges > 0) {
             victim.getWorld().strikeLightning(victim.getLocation());
 
-            // THE DAMAGE FIX: Instead of victim.damage(), we manually lower the health.
-            // This ignores armor AND invulnerability frames.
+            // ULTIMATE DAMAGE FIX: Bypasses everything by setting health directly
             double currentHealth = victim.getHealth();
-            double newHealth = Math.max(0, currentHealth - 4.0); // 4.0 = 2 hearts
-            victim.setHealth(newHealth);
+            double finalHealth = Math.max(0, currentHealth - 4.0); // 4.0 = 2 hearts
+            victim.setHealth(finalHealth);
             
             player.sendMessage(ChatColor.AQUA + "⚡ THE STORM PIERCES! ⚡");
 
-            // 3. Update Charges
+            // 3. Update State
             charges--;
             if (charges == 0) {
                 rechargeTimer.put(player.getUniqueId(), System.currentTimeMillis());
