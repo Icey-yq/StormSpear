@@ -1,15 +1,16 @@
 package me.stormweaver;
 
-import org.bukkit.*;
-import org.bukkit.block.Block;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.LivingEntity;
+import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
+import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.block.Action;
-import org.bukkit.event.inventory.CraftItemEvent;
-import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -17,53 +18,73 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.UUID;
 
-public class StormSpear extends JavaPlugin implements Listener {
+public class StormSpear extends JavaPlugin implements Listener, CommandExecutor {
 
-    private final NamespacedKey chargeKey = new NamespacedKey(this, "charges");
-    private final NamespacedKey craftLimitKey = new NamespacedKey(this, "crafted");
-    private final HashMap<UUID, Long> cdMap = new HashMap<>();
+    private NamespacedKey chargeKey;
 
     @Override
     public void onEnable() {
-        Bukkit.getPluginManager().registerEvents(this, this);
+        this.chargeKey = new NamespacedKey(this, "spear_charges");
+        getServer().getPluginManager().registerEvents(this, this);
+        
+        // Register the command
+        getCommand("getspear").setExecutor(this);
+        
         registerRecipe();
+        getLogger().info("StormSpear (Fulgurite Obelisk) has been awakened!");
     }
 
-    private void registerRecipe() {
-        ShapedRecipe r = new ShapedRecipe(new NamespacedKey(this, "storm_recipe"), getSpear());
+    // This handles the /getspear command
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("Only players can use this command!");
+            return true;
+        }
+
+        if (!player.isOp()) {
+            player.sendMessage(ChatColor.RED + "You do not have permission to summon the Storm Spear!");
+            return true;
+        }
+
+        player.getInventory().addItem(getSpear());
+        player.sendMessage(ChatColor.GOLD + "The sky darkens as the " + ChatColor.BOLD + "Fulgurite Obelisk" + ChatColor.GOLD + " appears in your hands!");
+        return true;
+    }
+
+    public void registerRecipe() {
+        NamespacedKey recipeKey = new NamespacedKey(this, "fulgurite_obelisk");
+        ShapedRecipe recipe = new ShapedRecipe(recipeKey, getSpear());
         
-        // Layout remains the same, but 'I' is now the Ingot in the center
-        r.shape("BCB", "TIT", "BLB");
-        
-        r.setIngredient('B', Material.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE);
-        r.setIngredient('C', Material.CONDUIT);
-        r.setIngredient('T', Material.TRIDENT);
-        r.setIngredient('I', Material.NETHERITE_INGOT); // Changed Spear to Ingot here
-        r.setIngredient('L', Material.LIGHTNING_ROD);
-        
-        Bukkit.addRecipe(r);
+        recipe.shape("BCB", "TIT", "BLB");
+        recipe.setIngredient('B', Material.COAST_ARMOR_TRIM_SMITHING_TEMPLATE);
+        recipe.setIngredient('C', Material.CONDUIT);
+        recipe.setIngredient('T', Material.TRIDENT);
+        recipe.setIngredient('I', Material.NETHERITE_INGOT);
+        recipe.setIngredient('L', Material.LIGHTNING_ROD);
+
+        Bukkit.addRecipe(recipe);
     }
 
     public ItemStack getSpear() {
-        // We still use matchMaterial for the output so the build doesn't fail
         Material mat = Material.matchMaterial("NETHERITE_SPEAR");
-        if (mat == null) mat = Material.NETHERITE_HOE; // Fallback for stability
-        
+        if (mat == null) mat = Material.NETHERITE_HOE;
+
         ItemStack s = new ItemStack(mat);
         ItemMeta m = s.getItemMeta();
         if (m != null) {
             m.setDisplayName(ChatColor.GOLD + "" + ChatColor.BOLD + "The Fulgurite Obelisk");
+            m.setCustomModelData(123456);
+
             List<String> l = new ArrayList<>();
             l.add(ChatColor.DARK_PURPLE + "Relic of the Primal Gale");
             l.add("");
             l.add(ChatColor.WHITE + "Charges: " + ChatColor.YELLOW + "3 / 3");
-            l.add(ChatColor.GRAY + "Range: 5 Blocks");
-            l.add(ChatColor.DARK_GRAY + "Cooldown: 60s");
+            l.add(ChatColor.GRAY + "Effect: Direct Lightning Strike");
             m.setLore(l);
+
             m.getPersistentDataContainer().set(chargeKey, PersistentDataType.INTEGER, 3);
             s.setItemMeta(m);
         }
@@ -71,65 +92,34 @@ public class StormSpear extends JavaPlugin implements Listener {
     }
 
     @EventHandler
-    public void onCraft(CraftItemEvent e) {
-        if (e.getRecipe().getResult().getItemMeta() == null) return;
-        if (e.getRecipe().getResult().getItemMeta().getDisplayName().contains("Obelisk")) {
-            Player p = (Player) e.getWhoClicked();
-            if (p.getPersistentDataContainer().has(craftLimitKey, PersistentDataType.BYTE)) {
-                p.sendMessage(ChatColor.RED + "The secret of the forge has left your mind. You can only craft this once.");
-                e.setCancelled(true);
-            } else {
-                p.getPersistentDataContainer().set(craftLimitKey, PersistentDataType.BYTE, (byte) 1);
-                p.getWorld().playSound(p.getLocation(), Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 1f, 0.5f);
-            }
-        }
-    }
+    public void onHit(EntityDamageByEntityEvent e) {
+        if (!(e.getDamager() instanceof Player player)) return;
 
-    @EventHandler
-    public void onUse(PlayerInteractEvent e) {
-        if (e.getAction() != Action.LEFT_CLICK_AIR && e.getAction() != Action.LEFT_CLICK_BLOCK) return;
-        
-        ItemStack item = e.getItem();
+        ItemStack item = player.getInventory().getItemInMainHand();
         if (item == null || !item.hasItemMeta()) return;
-        if (!item.getItemMeta().getDisplayName().contains("Obelisk")) return;
-        
+
         ItemMeta m = item.getItemMeta();
-        if (!m.getPersistentDataContainer().has(chargeKey, PersistentDataType.INTEGER)) return;
+        if (!m.hasCustomModelData() || m.getCustomModelData() != 123456) return;
 
-        Player p = e.getPlayer();
-        int charges = m.getPersistentDataContainer().get(chargeKey, PersistentDataType.INTEGER);
-        
-        if (charges <= 0) {
-            long remaining = (cdMap.getOrDefault(p.getUniqueId(), 0L) + 60000) - System.currentTimeMillis();
-            if (remaining > 0) {
-                p.sendMessage(ChatColor.RED + "Recharging: " + (remaining/1000) + "s");
-                return;
+        int charges = m.getPersistentDataContainer().getOrDefault(chargeKey, PersistentDataType.INTEGER, 0);
+
+        if (charges > 0) {
+            e.getEntity().getWorld().strikeLightning(e.getEntity().getLocation());
+            e.setDamage(e.getDamage() + 4.0);
+
+            charges--;
+            m.getPersistentDataContainer().set(chargeKey, PersistentDataType.INTEGER, charges);
+
+            List<String> lore = m.getLore();
+            if (lore != null && lore.size() >= 3) {
+                lore.set(2, ChatColor.WHITE + "Charges: " + ChatColor.YELLOW + charges + " / 3");
+                m.setLore(lore);
             }
-            charges = 3;
+
+            item.setItemMeta(m);
+            player.sendMessage(ChatColor.AQUA + "⚡ THE STORM STRIKES! ⚡");
+        } else {
+            player.sendMessage(ChatColor.RED + "The spear's energy is depleted...");
         }
-
-        Block b = p.getTargetBlockExact(5);
-        if (b == null) return;
-
-        Location loc = b.getLocation();
-        loc.getWorld().strikeLightningEffect(loc);
-        loc.getWorld().spawnParticle(Particle.DUST, loc.add(0.5, 1, 0.5), 50, 0.5, 0.5, 0.5, new Particle.DustOptions(Color.YELLOW, 2f));
-        
-        for (Entity target : loc.getWorld().getNearbyEntities(loc, 2, 2, 2)) {
-            if (target instanceof LivingEntity le && !le.equals(p)) {
-                le.damage(4.0, p);
-            }
-        }
-
-        charges--;
-        m.getPersistentDataContainer().set(chargeKey, PersistentDataType.INTEGER, charges);
-        List<String> lore = m.getLore();
-        if (lore != null && lore.size() > 2) {
-            lore.set(2, ChatColor.WHITE + "Charges: " + ChatColor.YELLOW + charges + " / 3");
-            m.setLore(lore);
-        }
-        item.setItemMeta(m);
-
-        if (charges == 0) cdMap.put(p.getUniqueId(), System.currentTimeMillis());
     }
 }
