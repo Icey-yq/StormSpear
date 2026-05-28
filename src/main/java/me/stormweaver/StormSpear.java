@@ -27,20 +27,14 @@ import java.util.UUID;
 public class StormSpear extends JavaPlugin implements Listener, CommandExecutor {
 
     private NamespacedKey chargeKey;
-    // Cooldown Map: Prevents the "100 Million Lightning" loop
     private final HashMap<UUID, Long> cooldowns = new HashMap<>();
 
     @Override
     public void onEnable() {
         this.chargeKey = new NamespacedKey(this, "spear_charges");
         getServer().getPluginManager().registerEvents(this, this);
-        
-        if (getCommand("getspear") != null) {
-            getCommand("getspear").setExecutor(this);
-        }
-        
+        if (getCommand("getspear") != null) getCommand("getspear").setExecutor(this);
         registerRecipe();
-        getLogger().info("StormSpear: Cooldown and Damage Logic Fixed.");
     }
 
     @Override
@@ -68,20 +62,17 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
     public ItemStack getSpear() {
         Material mat = Material.matchMaterial("NETHERITE_SPEAR");
         if (mat == null) mat = Material.NETHERITE_HOE;
-
         ItemStack s = new ItemStack(mat);
         ItemMeta m = s.getItemMeta();
         if (m != null) {
             m.setDisplayName(ChatColor.GOLD + "" + ChatColor.BOLD + "The Fulgurite Obelisk");
             m.setCustomModelData(123456);
-
             List<String> l = new ArrayList<>();
             l.add(ChatColor.DARK_PURPLE + "Relic of the Primal Gale");
             l.add("");
             l.add(ChatColor.WHITE + "Charges: " + ChatColor.YELLOW + "3 / 3");
-            l.add(ChatColor.AQUA + "Passive: " + ChatColor.WHITE + "True Lightning Damage");
+            l.add(ChatColor.RED + "Cooldown: 60 Seconds");
             m.setLore(l);
-
             m.getPersistentDataContainer().set(chargeKey, PersistentDataType.INTEGER, 3);
             s.setItemMeta(m);
         }
@@ -93,14 +84,16 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
         if (!(e.getDamager() instanceof Player player)) return;
         if (!(e.getEntity() instanceof LivingEntity victim)) return;
 
-        // 1. Cooldown Check (Kills the loop instantly)
+        // 1. Check 60-second Cooldown
         if (cooldowns.containsKey(player.getUniqueId())) {
-            if (cooldowns.get(player.getUniqueId()) > System.currentTimeMillis()) {
-                return; 
+            long lastUsed = cooldowns.get(player.getUniqueId());
+            long secondsPassed = (System.currentTimeMillis() - lastUsed) / 1000;
+            if (secondsPassed < 60) {
+                player.sendMessage(ChatColor.RED + "Recharging... (" + (60 - secondsPassed) + "s)");
+                return;
             }
         }
 
-        // 2. Item Verification
         ItemStack item = player.getInventory().getItemInMainHand();
         if (item == null || !item.hasItemMeta()) return;
         ItemMeta m = item.getItemMeta();
@@ -109,29 +102,27 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
         int charges = m.getPersistentDataContainer().getOrDefault(chargeKey, PersistentDataType.INTEGER, 0);
 
         if (charges > 0) {
-            // 3. Set Cooldown for 200ms (0.2s)
-            cooldowns.put(player.getUniqueId(), System.currentTimeMillis() + 200);
-
-            // 4. Strike Lightning
+            cooldowns.put(player.getUniqueId(), System.currentTimeMillis());
             victim.getWorld().strikeLightning(victim.getLocation());
 
-            // 5. Apply True Damage (6.0 = 3 Hearts)
-            // Passing 'player' as source ensures damage is registered correctly
-            victim.damage(6.0, player);
+            // 2. THE FIX: Wait 1 tick then apply 2 hearts (4.0) True Damage
+            Bukkit.getScheduler().runTaskLater(this, () -> {
+                victim.setNoDamageTicks(0); // Force open the damage window
+                victim.damage(4.0, player); // Apply exactly 2 hearts
+                player.sendMessage(ChatColor.AQUA + "⚡ THE STORM PIERCES! ⚡");
+            }, 1L);
 
-            // 6. Update Charges & Lore
+            // 3. Update Item Meta
             charges--;
             m.getPersistentDataContainer().set(chargeKey, PersistentDataType.INTEGER, charges);
-
             List<String> lore = m.getLore();
             if (lore != null && lore.size() >= 3) {
                 lore.set(2, ChatColor.WHITE + "Charges: " + ChatColor.YELLOW + charges + " / 3");
                 m.setLore(lore);
             }
             item.setItemMeta(m);
-            player.sendMessage(ChatColor.AQUA + "⚡ THE STORM STRIKES! ⚡");
         } else {
-            player.sendMessage(ChatColor.RED + "The spear is out of energy...");
+            player.sendMessage(ChatColor.RED + "No charges remaining!");
         }
     }
 }
