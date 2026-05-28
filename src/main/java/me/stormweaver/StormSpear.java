@@ -7,6 +7,7 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -29,14 +30,15 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
         this.chargeKey = new NamespacedKey(this, "spear_charges");
         getServer().getPluginManager().registerEvents(this, this);
         
-        // Register the command
-        getCommand("getspear").setExecutor(this);
+        // Register the /getspear command
+        if (getCommand("getspear") != null) {
+            getCommand("getspear").setExecutor(this);
+        }
         
         registerRecipe();
-        getLogger().info("StormSpear (Fulgurite Obelisk) has been awakened!");
+        getLogger().info("StormSpear (Fulgurite Obelisk) has been awakened with TRUE DAMAGE!");
     }
 
-    // This handles the /getspear command
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
@@ -76,13 +78,15 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
         ItemMeta m = s.getItemMeta();
         if (m != null) {
             m.setDisplayName(ChatColor.GOLD + "" + ChatColor.BOLD + "The Fulgurite Obelisk");
+            
+            // Texture Pack ID
             m.setCustomModelData(123456);
 
             List<String> l = new ArrayList<>();
             l.add(ChatColor.DARK_PURPLE + "Relic of the Primal Gale");
             l.add("");
             l.add(ChatColor.WHITE + "Charges: " + ChatColor.YELLOW + "3 / 3");
-            l.add(ChatColor.GRAY + "Effect: Direct Lightning Strike");
+            l.add(ChatColor.AQUA + "Passive: " + ChatColor.WHITE + "True Lightning Damage");
             m.setLore(l);
 
             m.getPersistentDataContainer().set(chargeKey, PersistentDataType.INTEGER, 3);
@@ -101,15 +105,24 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
         ItemMeta m = item.getItemMeta();
         if (!m.hasCustomModelData() || m.getCustomModelData() != 123456) return;
 
+        // Ensure we are hitting a living thing (Player or Mob)
+        if (!(e.getEntity() instanceof LivingEntity victim)) return;
+
         int charges = m.getPersistentDataContainer().getOrDefault(chargeKey, PersistentDataType.INTEGER, 0);
 
         if (charges > 0) {
-            e.getEntity().getWorld().strikeLightning(e.getEntity().getLocation());
-            e.setDamage(e.getDamage() + 4.0);
+            // 1. Visual Lightning
+            victim.getWorld().strikeLightning(victim.getLocation());
 
+            // 2. TRUE DAMAGE (Ignores Armor)
+            // 4.0 = 2 Full Hearts of damage
+            victim.damage(4.0, player);
+
+            // 3. Update Charges
             charges--;
             m.getPersistentDataContainer().set(chargeKey, PersistentDataType.INTEGER, charges);
 
+            // 4. Update Lore Visuals
             List<String> lore = m.getLore();
             if (lore != null && lore.size() >= 3) {
                 lore.set(2, ChatColor.WHITE + "Charges: " + ChatColor.YELLOW + charges + " / 3");
@@ -117,8 +130,9 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
             }
 
             item.setItemMeta(m);
-            player.sendMessage(ChatColor.AQUA + "⚡ THE STORM STRIKES! ⚡");
+            player.sendMessage(ChatColor.AQUA + "⚡ THE STORM PIERCES THEIR ARMOR! ⚡");
         } else {
+            // Optional: Small chance to spark even with 0 charges? (Keep it simple for now)
             player.sendMessage(ChatColor.RED + "The spear's energy is depleted...");
         }
     }
