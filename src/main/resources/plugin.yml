@@ -1,0 +1,5 @@
+name: StormSpear
+version: 1.0
+main: me.stormweaver.StormSpear
+api-version: 1.21
+description: A legendary lightning spear for 1.21.11.
