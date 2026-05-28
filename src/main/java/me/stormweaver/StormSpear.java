@@ -35,19 +35,25 @@ public class StormSpear extends JavaPlugin implements Listener {
 
     private void registerRecipe() {
         ShapedRecipe r = new ShapedRecipe(new NamespacedKey(this, "storm_recipe"), getSpear());
-        r.shape("BCB", "TNT", "BLB");
+        
+        // Layout remains the same, but 'I' is now the Ingot in the center
+        r.shape("BCB", "TIT", "BLB");
+        
         r.setIngredient('B', Material.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE);
         r.setIngredient('C', Material.CONDUIT);
         r.setIngredient('T', Material.TRIDENT);
-        // Using valueOf to bypass the "Cannot find symbol" error
-        r.setIngredient('N', Material.valueOf("NETHERITE_SPEAR"));
+        r.setIngredient('I', Material.NETHERITE_INGOT); // Changed Spear to Ingot here
         r.setIngredient('L', Material.LIGHTNING_ROD);
+        
         Bukkit.addRecipe(r);
     }
 
     public ItemStack getSpear() {
-        // Using valueOf here as well
-        ItemStack s = new ItemStack(Material.valueOf("NETHERITE_SPEAR"));
+        // We still use matchMaterial for the output so the build doesn't fail
+        Material mat = Material.matchMaterial("NETHERITE_SPEAR");
+        if (mat == null) mat = Material.NETHERITE_HOE; // Fallback for stability
+        
+        ItemStack s = new ItemStack(mat);
         ItemMeta m = s.getItemMeta();
         if (m != null) {
             m.setDisplayName(ChatColor.GOLD + "" + ChatColor.BOLD + "The Fulgurite Obelisk");
@@ -84,8 +90,8 @@ public class StormSpear extends JavaPlugin implements Listener {
         if (e.getAction() != Action.LEFT_CLICK_AIR && e.getAction() != Action.LEFT_CLICK_BLOCK) return;
         
         ItemStack item = e.getItem();
-        // Check if it's the spear using a string check to be safe
-        if (item == null || !item.getType().name().equals("NETHERITE_SPEAR") || !item.hasItemMeta()) return;
+        if (item == null || !item.hasItemMeta()) return;
+        if (!item.getItemMeta().getDisplayName().contains("Obelisk")) return;
         
         ItemMeta m = item.getItemMeta();
         if (!m.getPersistentDataContainer().has(chargeKey, PersistentDataType.INTEGER)) return;
