@@ -13,7 +13,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
-import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -21,11 +20,15 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.UUID;
 
 public class StormSpear extends JavaPlugin implements Listener, CommandExecutor {
 
     private NamespacedKey chargeKey;
+    // Cooldown Map: Prevents the "100 Million Lightning" loop
+    private final HashMap<UUID, Long> cooldowns = new HashMap<>();
 
     @Override
     public void onEnable() {
@@ -37,20 +40,17 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
         }
         
         registerRecipe();
-        getLogger().info("StormSpear Final Build: Infinite Loop Patch applied.");
+        getLogger().info("StormSpear: Cooldown and Damage Logic Fixed.");
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (!(sender instanceof Player player)) return true;
-
-        if (player.isOp()) {
+        if (sender instanceof Player player && player.isOp()) {
             player.getInventory().addItem(getSpear());
-            player.sendMessage(ChatColor.GOLD + "The Fulgurite Obelisk is yours.");
-        } else {
-            player.sendMessage(ChatColor.RED + "You aren't powerful enough to summon this.");
+            player.sendMessage(ChatColor.GOLD + "The Fulgurite Obelisk has been summoned.");
+            return true;
         }
-        return true;
+        return false;
     }
 
     public void registerRecipe() {
@@ -79,7 +79,7 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
             l.add(ChatColor.DARK_PURPLE + "Relic of the Primal Gale");
             l.add("");
             l.add(ChatColor.WHITE + "Charges: " + ChatColor.YELLOW + "3 / 3");
-            l.add(ChatColor.AQUA + "Passive: " + ChatColor.WHITE + "Armor-Piercing Strike");
+            l.add(ChatColor.AQUA + "Passive: " + ChatColor.WHITE + "True Lightning Damage");
             m.setLore(l);
 
             m.getPersistentDataContainer().set(chargeKey, PersistentDataType.INTEGER, 3);
@@ -88,19 +88,19 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
         return s;
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onHit(EntityDamageByEntityEvent e) {
-        // 1. Only trigger if a PLAYER is the one hitting
         if (!(e.getDamager() instanceof Player player)) return;
-
-        // 2. THE LOOP FIX: Only run if the damage is from a physical arm swing.
-        // When the plugin deals damage, the cause is NOT ENTITY_ATTACK, so it stops here.
-        if (e.getCause() != EntityDamageEvent.DamageCause.ENTITY_ATTACK) return;
-
-        // 3. Ensure the target is a Living Entity
         if (!(e.getEntity() instanceof LivingEntity victim)) return;
 
-        // 4. Verify the item in hand is our spear
+        // 1. Cooldown Check (Kills the loop instantly)
+        if (cooldowns.containsKey(player.getUniqueId())) {
+            if (cooldowns.get(player.getUniqueId()) > System.currentTimeMillis()) {
+                return; 
+            }
+        }
+
+        // 2. Item Verification
         ItemStack item = player.getInventory().getItemInMainHand();
         if (item == null || !item.hasItemMeta()) return;
         ItemMeta m = item.getItemMeta();
@@ -109,14 +109,17 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
         int charges = m.getPersistentDataContainer().getOrDefault(chargeKey, PersistentDataType.INTEGER, 0);
 
         if (charges > 0) {
-            // Visual/Sound Effect
+            // 3. Set Cooldown for 200ms (0.2s)
+            cooldowns.put(player.getUniqueId(), System.currentTimeMillis() + 200);
+
+            // 4. Strike Lightning
             victim.getWorld().strikeLightning(victim.getLocation());
 
-            // TRUE DAMAGE (4.0 = 2 Hearts) 
-            // We don't pass 'player' here to make the damage 'anonymous' to the event system
-            victim.damage(4.0); 
+            // 5. Apply True Damage (6.0 = 3 Hearts)
+            // Passing 'player' as source ensures damage is registered correctly
+            victim.damage(6.0, player);
 
-            // Update Charges
+            // 6. Update Charges & Lore
             charges--;
             m.getPersistentDataContainer().set(chargeKey, PersistentDataType.INTEGER, charges);
 
@@ -128,7 +131,7 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
             item.setItemMeta(m);
             player.sendMessage(ChatColor.AQUA + "⚡ THE STORM STRIKES! ⚡");
         } else {
-            player.sendMessage(ChatColor.RED + "The spear's core is cold...");
+            player.sendMessage(ChatColor.RED + "The spear is out of energy...");
         }
     }
 }
