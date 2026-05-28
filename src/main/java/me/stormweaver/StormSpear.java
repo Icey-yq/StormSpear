@@ -12,6 +12,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -36,7 +37,7 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
         }
         
         registerRecipe();
-        getLogger().info("StormSpear (Fulgurite Obelisk) has been awakened with TRUE DAMAGE!");
+        getLogger().info("StormSpear Awakened: Loop Fix Active.");
     }
 
     @Override
@@ -47,12 +48,12 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
         }
 
         if (!player.isOp()) {
-            player.sendMessage(ChatColor.RED + "You do not have permission to summon the Storm Spear!");
+            player.sendMessage(ChatColor.RED + "You do not have permission!");
             return true;
         }
 
         player.getInventory().addItem(getSpear());
-        player.sendMessage(ChatColor.GOLD + "The sky darkens as the " + ChatColor.BOLD + "Fulgurite Obelisk" + ChatColor.GOLD + " appears in your hands!");
+        player.sendMessage(ChatColor.GOLD + "You have summoned the " + ChatColor.BOLD + "Fulgurite Obelisk!");
         return true;
     }
 
@@ -78,8 +79,6 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
         ItemMeta m = s.getItemMeta();
         if (m != null) {
             m.setDisplayName(ChatColor.GOLD + "" + ChatColor.BOLD + "The Fulgurite Obelisk");
-            
-            // Texture Pack ID
             m.setCustomModelData(123456);
 
             List<String> l = new ArrayList<>();
@@ -97,7 +96,11 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
 
     @EventHandler
     public void onHit(EntityDamageByEntityEvent e) {
+        // 1. Only run if a player is attacking
         if (!(e.getDamager() instanceof Player player)) return;
+        
+        // 2. THE LOOP FIX: Ignore damage caused by this plugin
+        if (e.getCause() == EntityDamageEvent.DamageCause.CUSTOM) return;
 
         ItemStack item = player.getInventory().getItemInMainHand();
         if (item == null || !item.hasItemMeta()) return;
@@ -105,24 +108,22 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
         ItemMeta m = item.getItemMeta();
         if (!m.hasCustomModelData() || m.getCustomModelData() != 123456) return;
 
-        // Ensure we are hitting a living thing (Player or Mob)
         if (!(e.getEntity() instanceof LivingEntity victim)) return;
 
         int charges = m.getPersistentDataContainer().getOrDefault(chargeKey, PersistentDataType.INTEGER, 0);
 
         if (charges > 0) {
-            // 1. Visual Lightning
+            // Strike lightning
             victim.getWorld().strikeLightning(victim.getLocation());
 
-            // 2. TRUE DAMAGE (Ignores Armor)
-            // 4.0 = 2 Full Hearts of damage
+            // Apply True Damage (2 Hearts)
             victim.damage(4.0, player);
 
-            // 3. Update Charges
+            // Deduct charge
             charges--;
             m.getPersistentDataContainer().set(chargeKey, PersistentDataType.INTEGER, charges);
 
-            // 4. Update Lore Visuals
+            // Update Lore
             List<String> lore = m.getLore();
             if (lore != null && lore.size() >= 3) {
                 lore.set(2, ChatColor.WHITE + "Charges: " + ChatColor.YELLOW + charges + " / 3");
@@ -130,10 +131,9 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
             }
 
             item.setItemMeta(m);
-            player.sendMessage(ChatColor.AQUA + "⚡ THE STORM PIERCES THEIR ARMOR! ⚡");
+            player.sendMessage(ChatColor.AQUA + "⚡ THE STORM STRIKES! ⚡");
         } else {
-            // Optional: Small chance to spark even with 0 charges? (Keep it simple for now)
-            player.sendMessage(ChatColor.RED + "The spear's energy is depleted...");
+            player.sendMessage(ChatColor.RED + "Depleted energy...");
         }
     }
 }
