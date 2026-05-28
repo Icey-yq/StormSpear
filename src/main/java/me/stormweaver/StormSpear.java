@@ -10,14 +10,15 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.util.RayTraceResult;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -41,7 +42,7 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (sender instanceof Player player && player.isOp()) {
             player.getInventory().addItem(getSpear());
-            player.sendMessage(ChatColor.GOLD + "The Storm Spear has been forged.");
+            player.sendMessage(ChatColor.GOLD + "The Storm Spear has been summoned.");
             return true;
         }
         return false;
@@ -57,7 +58,7 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
         recipe.setIngredient('I', Material.NETHERITE_INGOT);
         recipe.setIngredient('L', Material.LIGHTNING_ROD);
         
-        // FIXED: Removed the extra string that caused the compilation error
+        // Use this version to avoid the Compilation Error from before
         Bukkit.addRecipe(recipe);
     }
 
@@ -73,7 +74,7 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
             l.add(ChatColor.DARK_PURPLE + "Relic of the Primal Gale");
             l.add("");
             l.add(ChatColor.WHITE + "Charges: " + ChatColor.YELLOW + "3 / 3");
-            l.add(ChatColor.GRAY + "3 hits, then 60s recharge.");
+            l.add(ChatColor.AQUA + "Right-Click: " + ChatColor.WHITE + "10-Block Storm Strike");
             m.setLore(l);
             m.getPersistentDataContainer().set(chargeKey, PersistentDataType.INTEGER, 3);
             s.setItemMeta(m);
@@ -81,10 +82,12 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
         return s;
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onHit(EntityDamageByEntityEvent e) {
-        if (!(e.getDamager() instanceof Player player)) return;
-        if (!(e.getEntity() instanceof LivingEntity victim)) return;
+    @EventHandler
+    public void onRightClick(PlayerInteractEvent e) {
+        Player player = e.getPlayer();
+        
+        // Filter for Right Clicks only
+        if (e.getAction() != Action.RIGHT_CLICK_AIR && e.getAction() != Action.RIGHT_CLICK_BLOCK) return;
 
         ItemStack item = player.getInventory().getItemInMainHand();
         if (item == null || !item.hasItemMeta()) return;
@@ -93,16 +96,15 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
 
         int charges = m.getPersistentDataContainer().getOrDefault(chargeKey, PersistentDataType.INTEGER, 0);
 
-        // 1. Recharge Timer Check
+        // 1. Recharge Logic (Starts after 3 hits)
         if (charges <= 0) {
             if (rechargeTimer.containsKey(player.getUniqueId())) {
-                long lastUsed = rechargeTimer.get(player.getUniqueId());
-                long secondsPassed = (System.currentTimeMillis() - lastUsed) / 1000;
-                if (secondsPassed < 60) {
-                    player.sendMessage(ChatColor.RED + "Recharging... (" + (60 - secondsPassed) + "s)");
+                long diff = (System.currentTimeMillis() - rechargeTimer.get(player.getUniqueId())) / 1000;
+                if (diff < 60) {
+                    player.sendMessage(ChatColor.RED + "Recharging... (" + (60 - diff) + "s)");
                     return;
                 } else {
-                    charges = 3; // Time is up, reset
+                    charges = 3;
                     rechargeTimer.remove(player.getUniqueId());
                 }
             } else {
@@ -110,18 +112,26 @@ public class StormSpear extends JavaPlugin implements Listener, CommandExecutor 
             }
         }
 
-        // 2. The Strike
-        if (charges > 0) {
+        // 2. Raycasting (Distance set to 10 blocks)
+        RayTraceResult result = player.getWorld().rayTraceEntities(
+                player.getEyeLocation(), 
+                player.getLocation().getDirection(), 
+                10, // Max distance: 10 blocks
+                0.5, 
+                (entity) -> entity instanceof LivingEntity && !entity.equals(player)
+        );
+
+        if (result != null && result.getHitEntity() instanceof LivingEntity victim) {
+            // Found a target! Strike lightning
             victim.getWorld().strikeLightning(victim.getLocation());
 
-            // ULTIMATE DAMAGE FIX: Bypasses everything by setting health directly
-            double currentHealth = victim.getHealth();
-            double finalHealth = Math.max(0, currentHealth - 4.0); // 4.0 = 2 hearts
-            victim.setHealth(finalHealth);
-            
+            // Apply 2 hearts (4.0) via direct health manipulation (ignores invulnerability)
+            double newHealth = Math.max(0, victim.getHealth() - 4.0);
+            victim.setHealth(newHealth);
+
             player.sendMessage(ChatColor.AQUA + "⚡ THE STORM PIERCES! ⚡");
 
-            // 3. Update State
+            // 3. Charge Management
             charges--;
             if (charges == 0) {
                 rechargeTimer.put(player.getUniqueId(), System.currentTimeMillis());
